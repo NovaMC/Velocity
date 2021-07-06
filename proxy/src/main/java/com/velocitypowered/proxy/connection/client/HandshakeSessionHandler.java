@@ -133,6 +133,12 @@ public class HandshakeSessionHandler implements MinecraftSessionHandler {
 
     connection.setType(getHandshakeConnectionType(handshake));
 
+    // Deny connections from lower than MINIMUM_VERSION.
+    if (handshake.getProtocolVersion().compareTo(ProtocolVersion.MINIMUM_VERSION) < 0) {
+      ic.disconnectQuietly(Component.translatable("multiplayer.disconnect.outdated_client")
+              .args(Component.text(ProtocolVersion.SUPPORTED_VERSION_STRING)));
+    }
+
     // If the proxy is configured for modern forwarding, we must deny connections from 1.12.2
     // and lower, otherwise IP information will never get forwarded.
     if (server.getConfiguration().getPlayerInfoForwardingMode() == PlayerInfoForwarding.MODERN
