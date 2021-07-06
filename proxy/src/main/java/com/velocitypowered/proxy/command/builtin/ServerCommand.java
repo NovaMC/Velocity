@@ -63,7 +63,7 @@ public class ServerCommand implements SimpleCommand {
       // Trying to connect to a server.
       String serverName = args[0];
       Optional<RegisteredServer> toConnect = server.getServer(serverName);
-      if (!toConnect.isPresent()) {
+      if (!toConnect.isPresent() || !hasAccess(player, toConnect.get())) {
         player.sendMessage(Identity.nil(), CommandMessages.SERVER_DOES_NOT_EXIST
             .args(Component.text(serverName)));
         return;
@@ -97,6 +97,9 @@ public class ServerCommand implements SimpleCommand {
         .append(Component.space());
     for (int i = 0; i < servers.size(); i++) {
       RegisteredServer rs = servers.get(i);
+      if (!hasAccess(executor, rs)) {
+        continue;
+      }
       serverListBuilder.append(formatServerComponent(currentServer, rs));
       if (i != servers.size() - 1) {
         serverListBuilder.append(Component.text(", ", NamedTextColor.GRAY));
@@ -138,10 +141,16 @@ public class ServerCommand implements SimpleCommand {
     return serverTextComponent;
   }
 
+  private boolean hasAccess(final CommandSource source, final RegisteredServer server) {
+    return source.getPermissionValue("velocity.server."
+            + server.getServerInfo().getName()) != Tristate.FALSE;
+  }
+
   @Override
   public List<String> suggest(final SimpleCommand.Invocation invocation) {
     final String[] currentArgs = invocation.arguments();
     Stream<String> possibilities = server.getAllServers().stream()
+            .filter(rs -> hasAccess(invocation.source(), rs))
             .map(rs -> rs.getServerInfo().getName());
 
     if (currentArgs.length == 0) {
