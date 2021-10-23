@@ -95,6 +95,8 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainComponentSerializer;
+import net.kyori.adventure.title.Title.Times;
+import net.kyori.adventure.title.TitlePart;
 import net.kyori.adventure.translation.GlobalTranslator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -369,7 +371,6 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
     if (this.getProtocolVersion().compareTo(ProtocolVersion.MINECRAFT_1_8) >= 0) {
       GsonComponentSerializer serializer = ProtocolUtils.getJsonChatSerializer(this
           .getProtocolVersion());
-
       GenericTitlePacket timesPkt = GenericTitlePacket.constructTitlePacket(
           GenericTitlePacket.ActionType.SET_TIMES, this.getProtocolVersion());
       net.kyori.adventure.title.Title.Times times = title.times();
@@ -391,6 +392,45 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
       connection.delayedWrite(titlePkt);
 
       connection.flush();
+    }
+  }
+
+  @Override
+  public <T> void sendTitlePart(@NotNull TitlePart<T> part, @NotNull T value) {
+    if (part == null) {
+      throw new NullPointerException("part");
+    }
+    if (value == null) {
+      throw new NullPointerException("value");
+    }
+
+    if (this.getProtocolVersion().compareTo(ProtocolVersion.MINECRAFT_1_8) < 0) {
+      return;
+    }
+
+    GsonComponentSerializer serializer = ProtocolUtils.getJsonChatSerializer(this
+        .getProtocolVersion());
+
+    if (part == TitlePart.TITLE) {
+      GenericTitlePacket titlePkt = GenericTitlePacket.constructTitlePacket(
+          GenericTitlePacket.ActionType.SET_TITLE, this.getProtocolVersion());
+      titlePkt.setComponent(serializer.serialize(translateMessage((Component) value)));
+      connection.write(titlePkt);
+    } else if (part == TitlePart.SUBTITLE) {
+      GenericTitlePacket titlePkt = GenericTitlePacket.constructTitlePacket(
+          GenericTitlePacket.ActionType.SET_SUBTITLE, this.getProtocolVersion());
+      titlePkt.setComponent(serializer.serialize(translateMessage((Component) value)));
+      connection.write(titlePkt);
+    } else if (part == TitlePart.TIMES) {
+      Times times = (Times) value;
+      GenericTitlePacket timesPkt = GenericTitlePacket.constructTitlePacket(
+          GenericTitlePacket.ActionType.SET_TIMES, this.getProtocolVersion());
+      timesPkt.setFadeIn((int) DurationUtils.toTicks(times.fadeIn()));
+      timesPkt.setStay((int) DurationUtils.toTicks(times.stay()));
+      timesPkt.setFadeOut((int) DurationUtils.toTicks(times.fadeOut()));
+      connection.write(timesPkt);
+    } else {
+      throw new IllegalArgumentException("Title part " + part + " is not valid");
     }
   }
 
@@ -641,7 +681,9 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
                       if (requestedMessage == null) {
                         requestedMessage = friendlyReason;
                       }
-                      sendMessage(requestedMessage);
+                      if (requestedMessage != Component.empty()) {
+                        sendMessage(requestedMessage);
+                      }
                       break;
                     default:
                       // The only remaining value is successful (no need to do anything!)
@@ -690,7 +732,12 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
     }
 
     if (serversToTry.isEmpty()) {
-      serversToTry = server.getConfiguration().getAttemptConnectionOrder();
+      List<String> connOrder = server.getConfiguration().getAttemptConnectionOrder();
+      if (connOrder.isEmpty()) {
+        return Optional.empty();
+      } else {
+        serversToTry = connOrder;
+      }
     }
 
     for (int i = tryIndex; i < serversToTry.size(); i++) {
