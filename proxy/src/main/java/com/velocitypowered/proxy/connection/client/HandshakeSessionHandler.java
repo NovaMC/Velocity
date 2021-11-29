@@ -148,8 +148,9 @@ public class HandshakeSessionHandler implements MinecraftSessionHandler {
       return;
     }
 
-    server.getEventManager().fireAndForget(new ConnectionHandshakeEvent(ic));
-    connection.setSessionHandler(new LoginSessionHandler(server, connection, ic));
+    LoginInboundConnection lic = new LoginInboundConnection(ic);
+    server.getEventManager().fireAndForget(new ConnectionHandshakeEvent(lic));
+    connection.setSessionHandler(new LoginSessionHandler(server, connection, lic));
   }
 
   private ConnectionType getHandshakeConnectionType(Handshake handshake) {

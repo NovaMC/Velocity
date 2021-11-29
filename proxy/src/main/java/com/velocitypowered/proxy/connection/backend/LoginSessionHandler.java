@@ -17,6 +17,8 @@
 
 package com.velocitypowered.proxy.connection.backend;
 
+import com.velocitypowered.api.event.player.ServerLoginPluginMessageEvent;
+import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import com.velocitypowered.api.util.GameProfile;
 import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.config.PlayerInfoForwarding;
@@ -36,8 +38,8 @@ import com.velocitypowered.proxy.protocol.packet.ServerLoginSuccess;
 import com.velocitypowered.proxy.protocol.packet.SetCompression;
 import com.velocitypowered.proxy.util.except.QuietRuntimeException;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import java.net.InetSocketAddress;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CompletableFuture;
@@ -45,7 +47,6 @@ import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
 
 public class LoginSessionHandler implements MinecraftSessionHandler {
 
@@ -82,8 +83,25 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
       mc.write(response);
       informationForwarded = true;
     } else {
-      // Don't understand
-      mc.write(new LoginPluginResponse(packet.getId(), false, Unpooled.EMPTY_BUFFER));
+      // Don't understand, fire event if we have subscribers
+      if (!this.server.getEventManager().hasSubscribers(ServerLoginPluginMessageEvent.class)) {
+        mc.write(new LoginPluginResponse(packet.getId(), false, Unpooled.EMPTY_BUFFER));
+        return true;
+      }
+
+      final byte[] contents = ByteBufUtil.getBytes(packet.content());
+      final MinecraftChannelIdentifier identifier = MinecraftChannelIdentifier
+          .from(packet.getChannel());
+      this.server.getEventManager().fire(new ServerLoginPluginMessageEvent(serverConn, identifier,
+          contents, packet.getId()))
+          .thenAcceptAsync(event -> {
+            if (event.getResult().isAllowed()) {
+              mc.write(new LoginPluginResponse(packet.getId(), true, Unpooled
+                  .wrappedBuffer(event.getResult().getResponse())));
+            } else {
+              mc.write(new LoginPluginResponse(packet.getId(), false, Unpooled.EMPTY_BUFFER));
+            }
+          }, mc.eventLoop());
     }
     return true;
   }
@@ -134,8 +152,7 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
       resultFuture.completeExceptionally(
           new QuietRuntimeException("The connection to the remote server was unexpectedly closed.\n"
               + "This is usually because the remote server does not have BungeeCord IP forwarding "
-              + "correctly enabled.\nSee "
-              + "https://docs.velocitypowered.com/en/latest/users/player-info-forwarding.html "
+              + "correctly enabled.\nSee https://velocitypowered.com/wiki/users/forwarding/ "
               + "for instructions on how to configure player info forwarding correctly.")
       );
     } else {

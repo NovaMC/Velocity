@@ -24,9 +24,9 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestion;
+import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.RootCommandNode;
-import com.spotify.futures.CompletableFutures;
 import com.velocitypowered.api.command.BrigadierCommand;
 import com.velocitypowered.api.command.Command;
 import com.velocitypowered.api.command.CommandManager;
@@ -42,14 +42,16 @@ import com.velocitypowered.proxy.event.VelocityEventManager;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
 import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.checkerframework.checker.lock.qual.GuardedBy;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
 
 public class VelocityCommandManager implements CommandManager {
@@ -61,6 +63,7 @@ public class VelocityCommandManager implements CommandManager {
   private final List<CommandRegistrar<?>> registrars;
   private final SuggestionsProvider<CommandSource> suggestionsProvider;
   private final CommandGraphInjector<CommandSource> injector;
+  private final Map<String, CommandMeta> commandMetas;
 
   /**
    * Constructs a command manager.
@@ -78,6 +81,7 @@ public class VelocityCommandManager implements CommandManager {
             new RawCommandRegistrar(root, this.lock.writeLock()));
     this.suggestionsProvider = new SuggestionsProvider<>(this.dispatcher, this.lock.readLock());
     this.injector = new CommandGraphInjector<>(this.dispatcher, this.lock.readLock());
+    this.commandMetas = new ConcurrentHashMap<>();
   }
 
   public void setAnnounceProxyCommands(boolean announceProxyCommands) {
@@ -137,6 +141,9 @@ public class VelocityCommandManager implements CommandManager {
       return false;
     }
     registrar.register(meta, superInterface.cast(command));
+    for (String alias : meta.getAliases()) {
+      commandMetas.put(alias, meta);
+    }
     return true;
   }
 
@@ -148,9 +155,34 @@ public class VelocityCommandManager implements CommandManager {
       // The literals of secondary aliases will preserve the children of
       // the removed literal in the graph.
       dispatcher.getRoot().removeChildByName(alias.toLowerCase(Locale.ENGLISH));
+      commandMetas.remove(alias);
     } finally {
       lock.writeLock().unlock();
     }
+  }
+
+  @Override
+  public void unregister(CommandMeta meta) {
+    Preconditions.checkNotNull(meta, "meta");
+    lock.writeLock().lock();
+    try {
+      // The literals of secondary aliases will preserve the children of
+      // the removed literal in the graph.
+      for (String alias : meta.getAliases()) {
+        final String lowercased = alias.toLowerCase(Locale.ENGLISH);
+        if (commandMetas.remove(lowercased, meta)) {
+          dispatcher.getRoot().removeChildByName(lowercased);
+        }
+      }
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
+
+  @Override
+  public @Nullable CommandMeta getCommandMeta(String alias) {
+    Preconditions.checkNotNull(alias, "alias");
+    return commandMetas.get(alias);
   }
 
   /**
@@ -226,14 +258,26 @@ public class VelocityCommandManager implements CommandManager {
    */
   public CompletableFuture<List<String>> offerSuggestions(final CommandSource source,
       final String cmdLine) {
+    return offerBrigadierSuggestions(source, cmdLine)
+        .thenApply(suggestions -> Lists.transform(suggestions.getList(), Suggestion::getText));
+  }
+
+  /**
+   * Returns suggestions to fill in the given command.
+   *
+   * @param source the source to execute the command for
+   * @param cmdLine the partially completed command
+   * @return a {@link CompletableFuture} eventually completed with {@link Suggestions},
+   *         possibly empty
+   */
+  public CompletableFuture<Suggestions> offerBrigadierSuggestions(
+      final CommandSource source, final String cmdLine) {
     Preconditions.checkNotNull(source, "source");
     Preconditions.checkNotNull(cmdLine, "cmdLine");
 
     final String normalizedInput = VelocityCommands.normalizeInput(cmdLine, false);
     try {
-      return suggestionsProvider.provideSuggestions(normalizedInput, source)
-              .thenApply(suggestions ->
-                      Lists.transform(suggestions.getList(), Suggestion::getText));
+      return suggestionsProvider.provideSuggestions(normalizedInput, source);
     } catch (final Throwable e) {
       // Again, plugins are naughty
       return CompletableFuture.failedFuture(
