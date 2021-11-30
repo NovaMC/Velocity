@@ -67,7 +67,7 @@ public enum ProtocolVersion {
   /**
    * Represents the lowest supported version.
    */
-  public static final ProtocolVersion MINIMUM_VERSION = MINECRAFT_1_16_4;
+  public static final ProtocolVersion MINIMUM_VERSION = MINECRAFT_1_17;
   /**
    * Represents the highest supported version.
    */
