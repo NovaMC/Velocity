@@ -235,5 +235,10 @@ public class HandshakeSessionHandler implements MinecraftSessionHandler {
     public ProtocolVersion getProtocolVersion() {
       return ProtocolVersion.LEGACY;
     }
+
+    @Override
+    public String toString() {
+      return "[legacy connection] " + this.getRemoteAddress().toString();
+    }
   }
 }
