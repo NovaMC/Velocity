@@ -830,7 +830,9 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
 
   @Override
   public String toString() {
-    return "[connected player] " + profile.getName() + " (" + getRemoteAddress() + ")";
+    boolean isPlayerAddressLoggingEnabled = server.getConfiguration().isPlayerAddressLoggingEnabled();
+    String playerIp = isPlayerAddressLoggingEnabled ? getRemoteAddress().toString() : "<ip address withheld>";
+    return "[connected player] " + profile.getName() + " (" + playerIp + ")";
   }
 
   @Override
@@ -986,7 +988,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
     }
 
     return queued != null
-            && queued.getOriginalOrigin() == ResourcePackInfo.Origin.DOWNSTREAM_SERVER;
+            && queued.getOriginalOrigin() != ResourcePackInfo.Origin.DOWNSTREAM_SERVER;
   }
 
   /**
