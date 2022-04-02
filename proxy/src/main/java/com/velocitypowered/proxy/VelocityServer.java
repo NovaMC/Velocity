@@ -282,7 +282,7 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
       logger.error("Encountered an I/O error whilst loading translations", e);
       return;
     }
-    GlobalTranslator.get().addSource(translationRegistry);
+    GlobalTranslator.translator().addSource(translationRegistry);
   }
 
   @SuppressFBWarnings("DM_EXIT")
@@ -502,6 +502,9 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
         Thread.currentThread().interrupt();
       }
 
+      // Since we manually removed the shutdown hook, we need to handle the shutdown ourselves.
+      LogManager.shutdown();
+
       shutdown = true;
 
       if (explicitExit) {
@@ -530,7 +533,7 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
    * @param explicitExit whether the user explicitly shut down the proxy
    */
   public void shutdown(boolean explicitExit) {
-    shutdown(explicitExit, Component.text("Proxy shutting down, we'll be right back!"));
+    shutdown(explicitExit, Component.translatable("velocity.kick.shutdown"));
   }
 
   @Override
