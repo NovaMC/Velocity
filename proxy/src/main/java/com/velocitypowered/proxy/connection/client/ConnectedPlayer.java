@@ -152,6 +152,8 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
   private final @NotNull Pointers pointers = Player.super.pointers().toBuilder()
           .withDynamic(Identity.UUID, this::getUniqueId)
           .withDynamic(Identity.NAME, this::getUsername)
+          .withDynamic(Identity.DISPLAY_NAME, () -> Component.text(this.getUsername()))
+          .withDynamic(Identity.LOCALE, this::getEffectiveLocale)
           .withStatic(PermissionChecker.POINTER, getPermissionChecker())
           .withStatic(FacetPointers.TYPE, Type.PLAYER)
           .build();
@@ -480,7 +482,12 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
 
   @Override
   public ConnectionRequestBuilder createConnectionRequest(RegisteredServer server) {
-    return new ConnectionRequestBuilderImpl(server);
+    return new ConnectionRequestBuilderImpl(server, this.connectedServer);
+  }
+
+  private ConnectionRequestBuilder createConnectionRequest(RegisteredServer server,
+      @Nullable VelocityServerConnection previousConnection) {
+    return new ConnectionRequestBuilderImpl(server, previousConnection);
   }
 
   @Override
@@ -520,8 +527,10 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
   public void disconnect0(Component reason, boolean duringLogin) {
     Component translated = this.translateMessage(reason);
 
-    logger.info("{} has disconnected: {}", this,
-        LegacyComponentSerializer.legacySection().serialize(translated));
+    if (server.getConfiguration().isLogPlayerConnections()) {
+      logger.info("{} has disconnected: {}", this,
+          LegacyComponentSerializer.legacySection().serialize(translated));
+    }
     connection.closeWith(Disconnect.create(translated, this.getProtocolVersion()));
   }
 
@@ -648,7 +657,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
           connectionInFlight = null;
 
           // Make sure we clear the current connected server as the connection is invalid.
-          boolean previouslyConnected = connectedServer != null;
+          VelocityServerConnection previousConnection = connectedServer;
           if (kickedFromCurrent) {
             connectedServer = null;
           }
@@ -663,7 +672,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
             disconnect(res.getReasonComponent());
           } else if (event.getResult() instanceof RedirectPlayer) {
             RedirectPlayer res = (RedirectPlayer) event.getResult();
-            createConnectionRequest(res.getServer())
+            createConnectionRequest(res.getServer(), previousConnection)
                 .connect()
                 .whenCompleteAsync((status, throwable) -> {
                   if (throwable != null) {
@@ -706,7 +715,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
                 }, connection.eventLoop());
           } else if (event.getResult() instanceof Notify) {
             Notify res = (Notify) event.getResult();
-            if (event.kickedDuringServerConnect() && previouslyConnected) {
+            if (event.kickedDuringServerConnect() && previousConnection != null) {
               sendMessage(Identity.nil(), res.getMessageComponent());
             } else {
               disconnect(res.getMessageComponent());
@@ -1056,9 +1065,12 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
   private class ConnectionRequestBuilderImpl implements ConnectionRequestBuilder {
 
     private final RegisteredServer toConnect;
+    private final @Nullable VelocityRegisteredServer previousServer;
 
-    ConnectionRequestBuilderImpl(RegisteredServer toConnect) {
+    ConnectionRequestBuilderImpl(RegisteredServer toConnect,
+        @Nullable VelocityServerConnection previousConnection) {
       this.toConnect = Preconditions.checkNotNull(toConnect, "info");
+      this.previousServer = previousConnection == null ? null : previousConnection.getServer();
     }
 
     @Override
@@ -1092,7 +1104,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
             }
 
             ServerPreConnectEvent event = new ServerPreConnectEvent(ConnectedPlayer.this,
-                toConnect);
+                toConnect, previousServer);
             return server.getEventManager().fire(event)
                 .thenComposeAsync(newEvent -> {
                   Optional<RegisteredServer> newDest = newEvent.getResult().getServer();
@@ -1110,7 +1122,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player {
 
                   VelocityRegisteredServer vrs = (VelocityRegisteredServer) realDestination;
                   VelocityServerConnection con = new VelocityServerConnection(vrs,
-                      ConnectedPlayer.this, server);
+                      previousServer, ConnectedPlayer.this, server);
                   connectionInFlight = con;
                   return con.connect().whenCompleteAsync(
                       (result, exception) -> this.resetIfInFlightIs(con), connection.eventLoop());

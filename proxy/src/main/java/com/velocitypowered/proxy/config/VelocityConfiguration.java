@@ -38,7 +38,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.util.HashMap;
@@ -219,7 +218,7 @@ public class VelocityConfiguration implements ProxyConfig {
   }
 
   private void loadFavicon() {
-    Path faviconPath = Paths.get("server-icon.png");
+    Path faviconPath = Path.of("server-icon.png");
     if (Files.exists(faviconPath)) {
       try {
         this.favicon = Favicon.create(faviconPath);
@@ -376,6 +375,10 @@ public class VelocityConfiguration implements ProxyConfig {
 
   public boolean isLogCommandExecutions() {
     return advanced.isLogCommandExecutions();
+  }
+
+  public boolean isLogPlayerConnections() {
+    return advanced.isLogPlayerConnections();
   }
 
   @Override
@@ -640,6 +643,7 @@ public class VelocityConfiguration implements ProxyConfig {
     @Expose private boolean failoverOnUnexpectedServerDisconnect = true;
     @Expose private boolean announceProxyCommands = true;
     @Expose private boolean logCommandExecutions = false;
+    @Expose private boolean logPlayerConnections = true;
 
     private Advanced() {
     }
@@ -663,6 +667,7 @@ public class VelocityConfiguration implements ProxyConfig {
             .getOrElse("failover-on-unexpected-server-disconnect", true);
         this.announceProxyCommands = config.getOrElse("announce-proxy-commands", true);
         this.logCommandExecutions = config.getOrElse("log-command-executions", false);
+        this.logPlayerConnections = config.getOrElse("log-player-connections", true);
       }
     }
 
@@ -714,6 +719,10 @@ public class VelocityConfiguration implements ProxyConfig {
       return logCommandExecutions;
     }
 
+    public boolean isLogPlayerConnections() {
+      return logPlayerConnections;
+    }
+
     @Override
     public String toString() {
       return "Advanced{"
@@ -729,6 +738,7 @@ public class VelocityConfiguration implements ProxyConfig {
           + ", failoverOnUnexpectedServerDisconnect=" + failoverOnUnexpectedServerDisconnect
           + ", announceProxyCommands=" + announceProxyCommands
           + ", logCommandExecutions=" + logCommandExecutions
+          + ", logPlayerConnections=" + logPlayerConnections
           + '}';
     }
   }
