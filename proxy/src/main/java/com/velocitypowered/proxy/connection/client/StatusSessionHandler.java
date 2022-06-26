@@ -36,7 +36,7 @@ public class StatusSessionHandler implements MinecraftSessionHandler {
 
   private static final Logger logger = LogManager.getLogger(StatusSessionHandler.class);
   private static final QuietRuntimeException EXPECTED_AWAITING_REQUEST = new QuietRuntimeException(
-          "Expected connection to be awaiting status request");
+      "Expected connection to be awaiting status request");
 
   private final VelocityServer server;
   private final MinecraftConnection connection;
@@ -53,7 +53,7 @@ public class StatusSessionHandler implements MinecraftSessionHandler {
   public void activated() {
     if (server.getConfiguration().isShowPingRequests()) {
       logger.info("{} is pinging the server with version {}", this.inbound,
-              this.connection.getProtocolVersion());
+          this.connection.getProtocolVersion());
     }
   }
 
@@ -64,14 +64,14 @@ public class StatusSessionHandler implements MinecraftSessionHandler {
     }
     this.pingReceived = true;
     server.getServerListPingHandler().getInitialPing(this.inbound)
-            .thenCompose(ping -> server.getEventManager().fire(new ProxyPingEvent(inbound, ping)))
-            .thenAcceptAsync(event -> connection.closeWith(
-                            LegacyDisconnect.fromServerPing(event.getPing(), packet.getVersion())),
-                    connection.eventLoop())
-            .exceptionally((ex) -> {
-              logger.error("Exception while handling legacy ping {}", packet, ex);
-              return null;
-            });
+        .thenCompose(ping -> server.getEventManager().fire(new ProxyPingEvent(inbound, ping)))
+        .thenAcceptAsync(event -> connection.closeWith(
+            LegacyDisconnect.fromServerPing(event.getPing(), packet.getVersion())),
+            connection.eventLoop())
+        .exceptionally((ex) -> {
+          logger.error("Exception while handling legacy ping {}", packet, ex);
+          return null;
+        });
     return true;
   }
 
@@ -89,19 +89,19 @@ public class StatusSessionHandler implements MinecraftSessionHandler {
     this.pingReceived = true;
 
     this.server.getServerListPingHandler().getInitialPing(inbound)
-            .thenCompose(ping -> server.getEventManager().fire(new ProxyPingEvent(inbound, ping)))
-            .thenAcceptAsync(
-                    (event) -> {
-                      StringBuilder json = new StringBuilder();
-                      VelocityServer.getPingGsonInstance(connection.getProtocolVersion())
-                              .toJson(event.getPing(), json);
-                      connection.write(new StatusResponse(json));
-                    },
-                    connection.eventLoop())
-            .exceptionally((ex) -> {
-              logger.error("Exception while handling status request {}", packet, ex);
-              return null;
-            });
+        .thenCompose(ping -> server.getEventManager().fire(new ProxyPingEvent(inbound, ping)))
+        .thenAcceptAsync(
+            (event) -> {
+              StringBuilder json = new StringBuilder();
+              VelocityServer.getPingGsonInstance(connection.getProtocolVersion())
+                  .toJson(event.getPing(), json);
+              connection.write(new StatusResponse(json));
+            },
+            connection.eventLoop())
+        .exceptionally((ex) -> {
+          logger.error("Exception while handling status request {}", packet, ex);
+          return null;
+        });
     return true;
   }
 
